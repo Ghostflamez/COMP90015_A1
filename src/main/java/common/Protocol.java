@@ -1,19 +1,21 @@
+// src/main/java/common/Protocol.java
 package common;
 
-import java.util.*;
+import java.util.List;
+import java.util.ArrayList;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 // define protocol for client-server communication
 public class Protocol {
-    // operation code
+    // operation codes
     public static final String SEARCH = "SEARCH";
     public static final String ADD = "ADD";
     public static final String REMOVE = "REMOVE";
     public static final String ADD_MEANING = "ADD_MEANING";
     public static final String UPDATE_MEANING = "UPDATE_MEANING";
 
-    // status code
+    // status codes
     public static final String SUCCESS = "SUCCESS";
     public static final String NOT_FOUND = "NOT_FOUND";
     public static final String DUPLICATE = "DUPLICATE";
@@ -23,68 +25,121 @@ public class Protocol {
 
     // message format
     public static class Message {
-        private String operation;
-        private String word;
-        private String meaning;
-        private String newMeaning;
-        private String status;
-        private List<String> meanings;
+        private String operation;  // operation type
+        private String word;       // key
+        private String status;     // response status
+
+        // parameters for operations
+        private List<String> params = new ArrayList<>();
+
+        // results for operations
+        private List<String> results = new ArrayList<>();
         private String errorMessage;
 
-        // getters and setters
-        public String getOperation() {
-            return operation;
+        // default constructor
+        public Message() {
         }
-        public void setOperation(String operation) {
-            this.operation = operation;
+
+        // Getters and setters
+        public String getOperation() { return operation; }
+        public void setOperation(String operation) { this.operation = operation; }
+
+        public String getWord() { return word; }
+        public void setWord(String word) { this.word = word; }
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+
+        public List<String> getParams() { return params; }
+        public void setParams(List<String> params) { this.params = params; }
+
+        public List<String> getResults() { return results; }
+        public void setResults(List<String> results) { this.results = results; }
+
+        public String getErrorMessage() { return errorMessage; }
+        public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+
+        // helper methods for adding parameters and results
+        public void addParam(String param) {
+            if (param != null) {
+                this.params.add(param);
+            }
         }
-        public String getWord() {
-            return word;
+
+        public String getParamAt(int index) {
+            if (params != null && index >= 0 && index < params.size()) {
+                return params.get(index);
+            }
+            return null;
         }
-        public void setWord(String word) {
-            this.word = word;
+
+        public void addResult(String result) {
+            if (result != null) {
+                this.results.add(result);
+            }
         }
+
+        // helper methods for getting specific parameters
         public String getMeaning() {
-            return meaning;
+            return getParamAt(0);
         }
-        public void setMeaning(String meaning) {
-            this.meaning = meaning;
+
+        public String getOldMeaning() {
+            return getParamAt(0);
         }
+
         public String getNewMeaning() {
-            return newMeaning;
-        }
-        public void setNewMeaning(String newMeaning) {
-            this.newMeaning = newMeaning;
-        }
-        public String getStatus() {
-            return status;
-        }
-        public void setStatus(String status) {
-            this.status = status;
-        }
-        public List<String> getMeanings() {
-            return meanings;
-        }
-        public void setMeanings(List<String> meanings) {
-            this.meanings = meanings;
-        }
-        public String getErrorMessage() {
-            return errorMessage;
-        }
-        public void setErrorMessage(String errorMessage) {
-            this.errorMessage = errorMessage;
-        }
-        // constructor
-        public Message(String operation, String word, String meaning, String newMeaning, String status, List<String> meanings, String errorMessage) {
-            this.operation = operation;
-            this.word = word;
-            this.meaning = meaning;
-            this.newMeaning = newMeaning;
-            this.status = status;
-            this.meanings = meanings;
-            this.errorMessage = errorMessage;
+            return getParamAt(1);
         }
     }
 
-    // JSON序列化和反序列化方法 (可以使用内置库或第三方库如Gson或Jackson)
+    // convert message object to JSON string -- for sending
+    public static String toJson(Message message) {
+        return gson.toJson(message);
+    }
+
+    // reconvert JSON string to message object -- for receiving
+    public static Message fromJson(String json) {
+        return gson.fromJson(json, Message.class);
+    }
+
+    // package message creation methods
+    public static Message createSearchRequest(String word) {
+        Message message = new Message();
+        message.setOperation(SEARCH);
+        message.setWord(word);
+        return message;
+    }
+
+    public static Message createAddRequest(String word, String meaning) {
+        Message message = new Message();
+        message.setOperation(ADD);
+        message.setWord(word);
+        message.addParam(meaning);
+        return message;
+    }
+
+    public static Message createRemoveRequest(String word) {
+        Message message = new Message();
+        message.setOperation(REMOVE);
+        message.setWord(word);
+        return message;
+    }
+
+    public static Message createAddMeaningRequest(String word, String meaning) {
+        Message message = new Message();
+        message.setOperation(ADD_MEANING);
+        message.setWord(word);
+        message.addParam(meaning);
+        return message;
+    }
+
+    public static Message createUpdateMeaningRequest(String word, String oldMeaning, String newMeaning) {
+        Message message = new Message();
+        message.setOperation(UPDATE_MEANING);
+        message.setWord(word);
+        message.addParam(oldMeaning);
+        message.addParam(newMeaning);
+        return message;
+    }
 }

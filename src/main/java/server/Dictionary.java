@@ -96,7 +96,7 @@ public class Dictionary {
 
             List<String> meanings = words.get(word);
             if (meanings != null) {
-                return false; // 单词已存在
+                return false; // word already exists
             }
 
             meanings = new ArrayList<>();

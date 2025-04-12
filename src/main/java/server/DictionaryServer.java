@@ -16,14 +16,14 @@ public class DictionaryServer {
 
     public void start() {
         try {
-            // 加载字典
+            // load dictionary
             dictionary.loadFromFile(dictionaryFile);
 
-            // 创建服务器套接字
+            // create server socket
             ServerSocket serverSocket = new ServerSocket(port);
             System.out.println("Server started on port " + port);
 
-            // 接受客户端连接
+            // accept client connections
             while (true) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
