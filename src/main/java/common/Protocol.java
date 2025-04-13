@@ -17,7 +17,8 @@ public class Protocol {
 
     // status codes
     public static final String SUCCESS = "SUCCESS";
-    public static final String NOT_FOUND = "NOT_FOUND";
+    public static final String WORD_NOT_FOUND = "WORD_NOT_FOUND";
+    public static final String MEANING_NOT_FOUND = "MEANING_NOT_FOUND";
     public static final String DUPLICATE = "DUPLICATE";
     public static final String ERROR = "ERROR";
 

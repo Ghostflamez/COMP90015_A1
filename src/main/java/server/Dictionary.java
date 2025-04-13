@@ -4,6 +4,8 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import common.Protocol;
+import common.DictionaryResult;
 
 public class Dictionary {
     //define dictionary structure
@@ -73,19 +75,30 @@ public class Dictionary {
     }
 
     // get word meanings
-    public List<String> getMeanings(String word) {
+    public List<String> getMeanings(String word) throws DictionaryException {
+        // check if word is empty or null
+        if (word == null || word.trim().isEmpty()) {
+            throw new DictionaryException("Word cannot be empty", "INVALID_INPUT");
+        }
+
         try {
             lock.readLock().lock();
-            return new ArrayList<>(words.getOrDefault(word.toLowerCase(), new ArrayList<>()));
+            String normalizedWord = word.toLowerCase().trim();
+            List<String> meanings = words.get(normalizedWord);
+
+            return new ArrayList<>(words.getOrDefault(word.toLowerCase().trim(), new ArrayList<>())); // return empty list if word not found
         } finally {
             lock.readLock().unlock();
         }
     }
 
     // add new word
-    public boolean addWord(String word, String meaning) {
-        if (word == null || word.trim().isEmpty() || meaning == null || meaning.trim().isEmpty()) {
-            return false;
+    public DictionaryResult addWord(String word, String meaning) throws DictionaryException {
+        if (word == null || word.trim().isEmpty()) {
+            throw new DictionaryException("Word cannot be empty", "INVALID_INPUT");
+        }
+        if (meaning == null || meaning.trim().isEmpty()) {
+            throw new DictionaryException("Meaning cannot be empty", "INVALID_INPUT");
         }
 
         word = word.toLowerCase().trim();
@@ -96,22 +109,22 @@ public class Dictionary {
 
             List<String> meanings = words.get(word);
             if (meanings != null) {
-                return false; // word already exists
+                return DictionaryResult.failure(Protocol.DUPLICATE); // word already exists
             }
 
             meanings = new ArrayList<>();
             meanings.add(meaning);
             words.put(word, meanings);
-            return true;
+            return DictionaryResult.success();
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     // delete word
-    public boolean removeWord(String word) {
+    public DictionaryResult removeWord(String word) throws DictionaryException {
         if (word == null || word.trim().isEmpty()) {
-            return false;
+            throw new DictionaryException("Word cannot be empty", "INVALID_INPUT");
         }
 
         word = word.toLowerCase().trim();
@@ -120,20 +133,22 @@ public class Dictionary {
             lock.writeLock().lock();
 
             if (!words.containsKey(word)) {
-                return false; // word does not exist
+                return DictionaryResult.failure(Protocol.WORD_NOT_FOUND);  // word does not exist
             }
 
             words.remove(word);
-            return true;
+            return DictionaryResult.success();
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     // add meaning to existing word
-    public boolean addMeaning(String word, String meaning) {
-        if (word == null || word.trim().isEmpty() || meaning == null || meaning.trim().isEmpty()) {
-            return false;
+    public DictionaryResult addMeaning(String word, String meaning) throws DictionaryException {
+        if (word == null || word.trim().isEmpty() ) {
+            throw new DictionaryException("Word cannot be empty", "INVALID_INPUT");
+        } else if ( meaning == null || meaning.trim().isEmpty()){
+            throw new DictionaryException("Meaning cannot be empty", "INVALID_INPUT");
         }
 
         word = word.toLowerCase().trim();
@@ -144,26 +159,28 @@ public class Dictionary {
 
             List<String> meanings = words.get(word);
             if (meanings == null) {
-                return false; // word does not exist
+                return DictionaryResult.failure(Protocol.WORD_NOT_FOUND); // word does not exist
             }
 
             if (meanings.contains(meaning)) {
-                return false; // meaning already exists
+                return DictionaryResult.failure(Protocol.MEANING_NOT_FOUND); // meaning already exists
             }
 
             meanings.add(meaning);
-            return true;
+            return DictionaryResult.success();
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     // update meaning of existing word
-    public boolean updateMeaning(String word, String oldMeaning, String newMeaning) {
-        if (word == null || word.trim().isEmpty() ||
-                oldMeaning == null || oldMeaning.trim().isEmpty() ||
-                newMeaning == null || newMeaning.trim().isEmpty()) {
-            return false;
+    public DictionaryResult updateMeaning(String word, String oldMeaning, String newMeaning) throws DictionaryException {
+        if (word == null || word.trim().isEmpty() ) {
+            throw new DictionaryException("Word cannot be empty", "INVALID_INPUT");
+        } else if ( oldMeaning == null || oldMeaning.trim().isEmpty()){
+            throw new DictionaryException("OldMeaning cannot be empty", "INVALID_INPUT");
+        } else if ( newMeaning == null || newMeaning.trim().isEmpty()){
+            throw new DictionaryException("NewMeaning cannot be empty", "INVALID_INPUT");
         }
 
         word = word.toLowerCase().trim();
@@ -175,16 +192,16 @@ public class Dictionary {
 
             List<String> meanings = words.get(word);
             if (meanings == null) {
-                return false; // word does not exist
+                return DictionaryResult.failure(Protocol.WORD_NOT_FOUND); // word does not exist
             }
 
             int index = meanings.indexOf(oldMeaning);
             if (index == -1) {
-                return false; // old meaning does not exist
+                return DictionaryResult.failure(Protocol.MEANING_NOT_FOUND); // old meaning does not exist
             }
 
             meanings.set(index, newMeaning);
-            return true;
+            return DictionaryResult.success();
         } finally {
             lock.writeLock().unlock();
         }

@@ -78,7 +78,7 @@ public class ClientHandler implements Runnable {
         List<String> meanings = dictionary.getMeanings(request.getWord());
 
         if (meanings == null || meanings.isEmpty()) {
-            response.setStatus(Protocol.NOT_FOUND);
+            response.setStatus(Protocol.MEANING_NOT_FOUND);
         } else {
             response.setStatus(Protocol.SUCCESS);
             response.setResults(meanings);
@@ -109,7 +109,7 @@ public class ClientHandler implements Runnable {
         if (success) {
             response.setStatus(Protocol.SUCCESS);
         } else {
-            response.setStatus(Protocol.NOT_FOUND);
+            response.setStatus(Protocol.WORD_NOT_FOUND);
         }
     }
 
@@ -127,7 +127,7 @@ public class ClientHandler implements Runnable {
         if (success) {
             response.setStatus(Protocol.SUCCESS);
         } else {
-            response.setStatus(Protocol.NOT_FOUND);
+            response.setStatus(Protocol.WORD_NOT_FOUND);
         }
     }
 
