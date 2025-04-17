@@ -4,15 +4,26 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class DictionaryServer {
+    private static final Logger LOGGER = Logger.getLogger(DictionaryServer.class.getName());
+
     private int port;
     private String dictionaryFile;
     private Dictionary dictionary;
-    private ExecutorService threadPool;
+    private CustomThreadPool threadPool;
     private final int AUTOSAVE_INTERVAL = 30; // seconds
     private AtomicBoolean running;
     private ScheduledExecutorService scheduler;
+
+    // Thread pool configuration
+    private static final int CORE_POOL_SIZE = 4;
+    private static final int MAX_POOL_SIZE = 16;
+    private static final long KEEP_ALIVE_TIME = 60;
+    private static final TimeUnit TIME_UNIT = TimeUnit.SECONDS;
+    private static final int WORK_QUEUE_CAPACITY = 100;
 
     public DictionaryServer(int port, String dictionaryFile) {
         this.port = port;
@@ -20,9 +31,14 @@ public class DictionaryServer {
         this.dictionary = new Dictionary();
         this.running = new AtomicBoolean(true);
 
-        // Create thread pool for handling client connections
-        int processors = Runtime.getRuntime().availableProcessors();
-        this.threadPool = Executors.newFixedThreadPool(processors * 2);
+        // Create custom thread pool for handling client connections
+        this.threadPool = new CustomThreadPool(
+            CORE_POOL_SIZE,
+            MAX_POOL_SIZE,
+            KEEP_ALIVE_TIME,
+            TIME_UNIT,
+            WORK_QUEUE_CAPACITY
+        );
 
         // Create scheduler for auto-saving
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -31,9 +47,9 @@ public class DictionaryServer {
     public void start() {
         try {
             // Load dictionary
-            System.out.println("Loading dictionary from " + dictionaryFile);
+            LOGGER.info("Loading dictionary from " + dictionaryFile);
             dictionary.loadFromFile(dictionaryFile);
-            System.out.println("Dictionary loaded successfully");
+            LOGGER.info("Dictionary loaded successfully");
 
             // Set up auto-save
             setupAutoSave();
@@ -43,20 +59,36 @@ public class DictionaryServer {
 
             // Create server socket
             ServerSocket serverSocket = new ServerSocket(port);
-            System.out.println("Server started on port " + port);
+            LOGGER.info("Server started on port " + port);
 
             // Accept client connections
             while (running.get()) {
                 try {
                     Socket clientSocket = serverSocket.accept();
-                    System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
+                    String clientAddress = clientSocket.getInetAddress().getHostAddress();
+                    LOGGER.info("New client connected: " + clientAddress);
 
-                    // Create and submit client handler to thread pool
-                    ClientHandler clientHandler = new ClientHandler(clientSocket, dictionary);
-                    threadPool.submit(clientHandler);
+                    // Create client handler and submit to our custom thread pool
+                    Runnable clientHandler = new ClientHandler(clientSocket, dictionary);
+                    if (!threadPool.execute(clientHandler)) {
+                        LOGGER.severe("Could not process client " + clientAddress + " - thread pool full");
+
+                        // Send a friendly message to the client before closing
+                        try (PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true)) {
+                            writer.println("Server is currently at maximum capacity. Please try again later.");
+                        }
+
+                        clientSocket.close();
+                    }
+
+                    // Log thread pool stats periodically
+                    if (threadPool.getPoolSize() % 5 == 0) {
+                        logThreadPoolStats();
+                    }
+
                 } catch (IOException e) {
                     if (running.get()) {
-                        System.err.println("Error accepting client connection: " + e.getMessage());
+                        LOGGER.log(Level.SEVERE, "Error accepting client connection: " + e.getMessage(), e);
                     }
                 }
             }
@@ -64,27 +96,38 @@ public class DictionaryServer {
             // Clean up
             serverSocket.close();
         } catch (IOException e) {
-            System.err.println("Server error: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "Server error: " + e.getMessage(), e);
         } finally {
             shutdown();
         }
     }
 
+    private void logThreadPoolStats() {
+        LOGGER.info(String.format(
+            "Thread pool stats - Size: %d, Active: %d, Queue: %d, Completed: %d, Rejected: %d",
+            threadPool.getPoolSize(),
+            threadPool.getActiveCount(),
+            threadPool.getQueueSize(),
+            threadPool.getCompletedTaskCount(),
+            threadPool.getRejectedTaskCount()
+        ));
+    }
+
     private void setupAutoSave() {
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                System.out.println("Auto-saving dictionary to " + dictionaryFile);
+                LOGGER.info("Auto-saving dictionary to " + dictionaryFile);
                 dictionary.saveToFile(dictionaryFile);
-                System.out.println("Dictionary auto-saved successfully");
+                LOGGER.info("Dictionary auto-saved successfully");
             } catch (IOException e) {
-                System.err.println("Error auto-saving dictionary: " + e.getMessage());
+                LOGGER.log(Level.SEVERE, "Error auto-saving dictionary: " + e.getMessage(), e);
             }
         }, AUTOSAVE_INTERVAL, AUTOSAVE_INTERVAL, TimeUnit.SECONDS);
     }
 
     private void setupShutdownHook() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down server...");
+            LOGGER.info("Shutting down server...");
             shutdown();
         }));
     }
@@ -93,9 +136,9 @@ public class DictionaryServer {
         if (running.getAndSet(false)) {
             try {
                 // Save dictionary before shutting down
-                System.out.println("Saving dictionary before shutdown...");
+                LOGGER.info("Saving dictionary before shutdown...");
                 dictionary.saveToFile(dictionaryFile);
-                System.out.println("Dictionary saved successfully");
+                LOGGER.info("Dictionary saved successfully");
 
                 // Shutdown thread pool and scheduler
                 scheduler.shutdown();
@@ -103,25 +146,26 @@ public class DictionaryServer {
 
                 // Wait for all tasks to complete
                 if (!threadPool.awaitTermination(5, TimeUnit.SECONDS)) {
-                    System.out.println("Forcing thread pool shutdown...");
-                    threadPool.shutdownNow();
+                    LOGGER.info("Forcing thread pool shutdown...");
                 }
 
                 if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    System.out.println("Forcing scheduler shutdown...");
+                    LOGGER.info("Forcing scheduler shutdown...");
                     scheduler.shutdownNow();
                 }
 
-                System.out.println("Server shutdown complete");
+                LOGGER.info("Server shutdown complete");
             } catch (IOException | InterruptedException e) {
-                System.err.println("Error during shutdown: " + e.getMessage());
-                threadPool.shutdownNow();
+                LOGGER.log(Level.SEVERE, "Error during shutdown: " + e.getMessage(), e);
                 scheduler.shutdownNow();
             }
         }
     }
 
     public static void main(String[] args) {
+        // Configure basic logging
+        configureLogging();
+
         if (args.length != 2) {
             System.out.println("Usage: java -jar DictionaryServer.jar <port> <dictionary-file>");
             return;
@@ -131,7 +175,7 @@ public class DictionaryServer {
         try {
             port = Integer.parseInt(args[0]);
         } catch (NumberFormatException e) {
-            System.err.println("Invalid port number: " + args[0]);
+            LOGGER.severe("Invalid port number: " + args[0]);
             return;
         }
 
@@ -140,5 +184,12 @@ public class DictionaryServer {
         // Create and start server
         DictionaryServer server = new DictionaryServer(port, dictionaryFile);
         server.start();
+    }
+
+    private static void configureLogging() {
+        // This is a simple logging setup - in a real application, you might use a properties file
+        // or a more sophisticated logging framework
+        System.setProperty("java.util.logging.SimpleFormatter.format",
+                "[%1$tF %1$tT] [%4$-7s] %5$s %n");
     }
 }
