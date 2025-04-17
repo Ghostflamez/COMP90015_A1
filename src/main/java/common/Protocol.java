@@ -135,6 +135,9 @@ public class Protocol {
         return message;
     }
 
+    /**
+     * Special case: If newMeaning is "<delete>", the meaning will be removed instead of updated.
+     */
     public static Message createUpdateMeaningRequest(String word, String oldMeaning, String newMeaning) {
         Message message = new Message();
         message.setOperation(UPDATE_MEANING);

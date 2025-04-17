@@ -201,7 +201,19 @@ public class Dictionary {
                 return DictionaryResult.failure(Protocol.MEANING_NOT_FOUND); // old meaning does not exist
             }
 
-            meanings.set(index, newMeaning);
+            // check if is delete operation
+            if ("<delete>".equals(newMeaning)) {
+                // delete the old meaning
+                meanings.remove(index);
+
+                // if the meanings list is empty, remove the word from the dictionary
+                if (meanings.isEmpty()) {
+                    words.remove(word);
+                }
+            } else {
+                // update the meaning otherwise
+                meanings.set(index, newMeaning);
+            }
             return DictionaryResult.success();
         } finally {
             lock.writeLock().unlock();
