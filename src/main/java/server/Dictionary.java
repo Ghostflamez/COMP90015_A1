@@ -1,11 +1,12 @@
 package server;
 
+import common.Protocol;
+import common.DictionaryResult;
+
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import common.Protocol;
-import common.DictionaryResult;
 
 public class Dictionary {
     //define dictionary structure

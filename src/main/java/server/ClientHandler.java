@@ -1,6 +1,9 @@
 package server;
 
 import common.Protocol;
+import common.DictionaryResult;
+
+import common.Protocol;
 import java.io.*;
 import java.net.Socket;
 import java.util.List;
@@ -66,6 +69,9 @@ public class ClientHandler implements Runnable {
                     response.setStatus(Protocol.ERROR);
                     response.setErrorMessage("Unknown operation");
             }
+        } catch (DictionaryException e) {
+        response.setStatus(Protocol.ERROR);
+        response.setErrorMessage(e.getMessage() + " (Error code: " + e.getErrorCode() + ")");
         } catch (Exception e) {
             response.setStatus(Protocol.ERROR);
             response.setErrorMessage("Server error: " + e.getMessage());
@@ -74,7 +80,7 @@ public class ClientHandler implements Runnable {
         return response;
     }
 
-    private void handleSearch(Protocol.Message request, Protocol.Message response) {
+    private void handleSearch(Protocol.Message request, Protocol.Message response) throws DictionaryException{
         List<String> meanings = dictionary.getMeanings(request.getWord());
 
         if (meanings == null || meanings.isEmpty()) {
@@ -85,7 +91,7 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void handleAdd(Protocol.Message request, Protocol.Message response) {
+    private void handleAdd(Protocol.Message request, Protocol.Message response) throws DictionaryException{
         String meaning = request.getMeaning();
 
         if (meaning == null || meaning.trim().isEmpty()) {
@@ -94,26 +100,26 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        boolean success = dictionary.addWord(request.getWord(), meaning);
+        DictionaryResult result = dictionary.addWord(request.getWord(), meaning);
 
-        if (success) {
+        if (result.isSuccess()) {
             response.setStatus(Protocol.SUCCESS);
         } else {
-            response.setStatus(Protocol.DUPLICATE);
+            response.setStatus(result.getStatusCode());
         }
     }
 
-    private void handleRemove(Protocol.Message request, Protocol.Message response) {
-        boolean success = dictionary.removeWord(request.getWord());
+    private void handleRemove(Protocol.Message request, Protocol.Message response) throws DictionaryException {
+        DictionaryResult result = dictionary.removeWord(request.getWord());
 
-        if (success) {
+        if (result.isSuccess()) {
             response.setStatus(Protocol.SUCCESS);
         } else {
-            response.setStatus(Protocol.WORD_NOT_FOUND);
+            response.setStatus(result.getStatusCode());
         }
     }
 
-    private void handleAddMeaning(Protocol.Message request, Protocol.Message response) {
+    private void handleAddMeaning(Protocol.Message request, Protocol.Message response) throws DictionaryException {
         String meaning = request.getMeaning();
 
         if (meaning == null || meaning.trim().isEmpty()) {
@@ -122,16 +128,16 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        boolean success = dictionary.addMeaning(request.getWord(), meaning);
+        DictionaryResult result = dictionary.addMeaning(request.getWord(), meaning);
 
-        if (success) {
+        if (result.isSuccess()) {
             response.setStatus(Protocol.SUCCESS);
         } else {
-            response.setStatus(Protocol.WORD_NOT_FOUND);
+            response.setStatus(result.getStatusCode());
         }
     }
 
-    private void handleUpdateMeaning(Protocol.Message request, Protocol.Message response) {
+    private void handleUpdateMeaning(Protocol.Message request, Protocol.Message response) throws DictionaryException {
         String oldMeaning = request.getOldMeaning();
         String newMeaning = request.getNewMeaning();
 
@@ -142,12 +148,12 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        boolean success = dictionary.updateMeaning(request.getWord(), oldMeaning, newMeaning);
+        DictionaryResult result = dictionary.updateMeaning(request.getWord(), oldMeaning, newMeaning);
 
-        if (success) {
+        if (result.isSuccess()) {
             response.setStatus(Protocol.SUCCESS);
         } else {
-            response.setStatus(Protocol.NOT_FOUND);
+            response.setStatus(result.getStatusCode());
         }
     }
 
