@@ -11,7 +11,11 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.*;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.Locale;
 
 public class DictionaryClient extends JFrame {
     // Network components
@@ -21,6 +25,7 @@ public class DictionaryClient extends JFrame {
     private String serverAddress;
     private int serverPort;
     private boolean connected = false;
+    private Timer connectionCheckTimer;
 
     // Common GUI components
     private JTextField wordField;
@@ -38,6 +43,7 @@ public class DictionaryClient extends JFrame {
     private JRadioButton removeRadioButton;
     private JRadioButton replaceRadioButton;
     private JTextField newMeaningField;
+    private JLabel newMeaningLabel;
     private JButton updateButton;
 
     // Navigation and utility components
@@ -47,13 +53,16 @@ public class DictionaryClient extends JFrame {
     // Current mode
     private boolean inEditMode = false;
 
+    // Password for edit mode
+    private final String EDIT_MODE_PASSWORD = "1234"; // Default password
+
     public DictionaryClient(String serverAddress, int serverPort) {
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
 
         // Set window properties
         setTitle("Dictionary Client");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         setSize(800, 600);
         setLocationRelativeTo(null); // Center on screen
 
@@ -68,6 +77,9 @@ public class DictionaryClient extends JFrame {
 
             // Show the initial mode
             showSearchMode();
+
+            // Start connection check timer
+            startConnectionCheckTimer();
 
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this,
@@ -90,6 +102,80 @@ public class DictionaryClient extends JFrame {
         } catch (IOException e) {
             connected = false;
             throw new IOException("Could not connect to server: " + e.getMessage(), e);
+        }
+    }
+
+    private void startConnectionCheckTimer() {
+        // Cancel existing timer if any
+        if (connectionCheckTimer != null) {
+            connectionCheckTimer.cancel();
+        }
+
+        // Create new timer
+        connectionCheckTimer = new Timer();
+        connectionCheckTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                checkConnectionStatus();
+            }
+        }, 0, 5000); // Check every 5 seconds
+    }
+
+    private void checkConnectionStatus() {
+        boolean wasConnected = connected;
+
+        // Only check if we think we're connected
+        if (connected) {
+            try {
+                // Try to send a simple ping
+                if (socket != null && !socket.isClosed()) {
+                    // Check if the socket is still connected
+                    connected = !socket.isClosed() && socket.isConnected() && !socket.isInputShutdown() && !socket.isOutputShutdown();
+
+                    if (connected) {
+                        // Try to send a search request for a non-existent word as a ping
+                        try {
+                            // Set a short timeout for the ping
+                            socket.setSoTimeout(2000);
+
+                            Protocol.Message pingRequest = Protocol.createSearchRequest("__ping__");
+                            writer.println(Protocol.toJson(pingRequest));
+
+                            // Try to read response
+                            String responseJson = reader.readLine();
+                            if (responseJson == null) {
+                                connected = false;
+                            }
+
+                            // Reset socket timeout
+                            socket.setSoTimeout(0);
+                        } catch (IOException e) {
+                            connected = false;
+                        }
+                    }
+                } else {
+                    connected = false;
+                }
+            } catch (Exception e) {
+                // Any exception means we're not connected
+                connected = false;
+            }
+        }
+
+        // If connection status changed
+        if (wasConnected != connected) {
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    updateConnectionStatus();
+                    if (!connected) {
+                        JOptionPane.showMessageDialog(DictionaryClient.this,
+                                "Connection to server lost.\nYou can try reconnecting when the server is available.",
+                                "Connection Lost",
+                                JOptionPane.WARNING_MESSAGE);
+                    }
+                }
+            });
         }
     }
 
@@ -152,8 +238,11 @@ public class DictionaryClient extends JFrame {
         radioGroup.add(replaceRadioButton);
         addRadioButton.setSelected(true);
 
+        newMeaningLabel = new JLabel("New Meaning:");
+        newMeaningLabel.setEnabled(false); // Initially disabled
+
         newMeaningField = new JTextField(20);
-        newMeaningField.setEnabled(false);
+        newMeaningField.setEnabled(false); // Initially disabled
 
         updateButton = new JButton("Update");
 
@@ -213,7 +302,6 @@ public class DictionaryClient extends JFrame {
 
         // New meaning field
         JPanel newMeaningPanel = new JPanel(new BorderLayout(5, 5));
-        JLabel newMeaningLabel = new JLabel("New Meaning:");
         newMeaningPanel.add(newMeaningLabel, BorderLayout.WEST);
         newMeaningPanel.add(newMeaningField, BorderLayout.CENTER);
 
@@ -238,9 +326,37 @@ public class DictionaryClient extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (inEditMode) {
-                    showSearchMode();
+                    // Confirm switching from Edit to Search mode
+                    int choice = JOptionPane.showConfirmDialog(
+                            DictionaryClient.this,
+                            "Switch to Search mode?\nYou will need to enter the password again to return to Edit mode.",
+                            "Confirm Mode Switch",
+                            JOptionPane.YES_NO_OPTION,
+                            JOptionPane.QUESTION_MESSAGE
+                    );
+
+                    if (choice == JOptionPane.YES_OPTION) {
+                        showSearchMode();
+                    }
                 } else {
-                    showEditMode();
+                    // Password required to switch to Edit mode
+                    String password = JOptionPane.showInputDialog(
+                            DictionaryClient.this,
+                            "Enter 4-digit password to access Edit mode:",
+                            "Password Required",
+                            JOptionPane.QUESTION_MESSAGE
+                    );
+
+                    if (password != null && password.equals(EDIT_MODE_PASSWORD)) {
+                        showEditMode();
+                    } else if (password != null) {
+                        JOptionPane.showMessageDialog(
+                                DictionaryClient.this,
+                                "Incorrect password.",
+                                "Access Denied",
+                                JOptionPane.ERROR_MESSAGE
+                        );
+                    }
                 }
             }
         });
@@ -266,6 +382,7 @@ public class DictionaryClient extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 newMeaningField.setEnabled(true);
+                newMeaningLabel.setEnabled(true);
             }
         });
 
@@ -273,6 +390,7 @@ public class DictionaryClient extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 newMeaningField.setEnabled(false);
+                newMeaningLabel.setEnabled(false);
             }
         });
 
@@ -280,6 +398,7 @@ public class DictionaryClient extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 newMeaningField.setEnabled(false);
+                newMeaningLabel.setEnabled(false);
             }
         });
 
@@ -319,7 +438,25 @@ public class DictionaryClient extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                closeConnection();
+                // Prompt user for confirmation before closing
+                int choice = JOptionPane.showConfirmDialog(
+                        DictionaryClient.this,
+                        "Do you want to disconnect and close the dictionary client?",
+                        "Confirm Exit",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE
+                );
+
+                if (choice == JOptionPane.YES_OPTION) {
+                    // Close connection and exit
+                    closeConnection();
+                    if (connectionCheckTimer != null) {
+                        connectionCheckTimer.cancel();
+                    }
+                    dispose(); // close the window
+                    System.exit(0); // exit the application
+                }
+                // if NO_OPTION, do nothing and keep the application running
             }
         });
     }
@@ -676,6 +813,8 @@ public class DictionaryClient extends JFrame {
     }
 
     public static void main(String[] args) {
+        // Set default locale to English
+        Locale.setDefault(Locale.ENGLISH);
         // Check command-line arguments
         if (args.length != 2) {
             System.out.println("Usage: java -jar DictionaryClient.jar <server-address> <server-port>");
