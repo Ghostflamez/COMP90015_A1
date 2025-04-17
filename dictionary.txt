@@ -1,2 +1,1 @@
-apple: A small Fruit
-apple: A red thing
+apple: A Big Fruit
